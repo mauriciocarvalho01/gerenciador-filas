@@ -1,0 +1,29 @@
+version: "3"
+
+services:
+  dev-gerenciador-agendamentos:
+    restart: always
+    build:
+      context: ./
+    container_name: dev-gerenciador-agendamentos
+    entrypoint: dockerize -wait tcp://192.168.1.7:16672 -timeout 20s docker-entrypoint.sh npm start
+    networks:
+      - dev-aplication
+    volumes:
+      - .:/usr/src/app
+    tty: true
+    ports:
+      - "7000:4000"
+    environment:
+      ENVIRONMENT: development
+      API_ROOT_URL: https://dev.arigo.com.br
+      APP_SECRET: 904c94e9993e11eb900000155d016d96
+      APP_KEY: 8485003970470
+      HTTP_MAX_ATTEMPS: 20
+      BROKER_ADDRESS: amqp://admin:admin@192.168.1.7:4672
+      CRON_EXPRESSION_TIME: '* * * * *'
+      TZ: America/Sao_Paulo
+
+networks:
+  dev-aplication:
+    external: true
