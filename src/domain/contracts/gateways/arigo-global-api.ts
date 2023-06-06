@@ -1,6 +1,8 @@
 import { ArigoDataApi } from '@/infra/gateways/arigo-global-api'
 
 export interface ArigoGlobalApi {
+  getAppSecret: string
+  getAppKey: string
   connect: (environment: string) => ArigoDataApi
   token: (token: ArigoGlobalApi.ApiToken) => ArigoDataApi
   method: (method: string) => ArigoDataApi
@@ -15,7 +17,7 @@ export interface ArigoGlobalApi {
   convertParamsForFilter: (params: ArigoGlobalApi.ReadInput) => ArigoGlobalApi.AbstractSqlFilter
   select: (params: ArigoGlobalApi.ReadInput) => Promise<ArigoGlobalApi.ReadOutput>
   // create: (params: ArigoGlobalApi.CreateInput) => void
-  // update: (params: ArigoGlobalApi.UpdateInput) => void
+  update: (params: ArigoGlobalApi.UpdateInput) => Promise<ArigoGlobalApi.UpdateOutput>
   // delete: (params: ArigoGlobalApi.DeleteInput) => void
   replace: (params: ArigoGlobalApi.ReplaceInput) => Promise<ArigoGlobalApi.ReplaceOutput>
   send: <T>(params: ArigoGlobalApi.ApiFilterBody) => Promise<T>
@@ -73,6 +75,7 @@ export namespace ArigoGlobalApi {
     chave: string
     valor: string
   }
+
   export type ReadInput = {
     page: number
     andWhere?: AndWhere[]
@@ -85,11 +88,7 @@ export namespace ArigoGlobalApi {
     orWhere?: OrWhere
   }
 
-  export type UpdateInput = {
-    pagina: number
-    andWhere?: AndWhere
-    orWhere?: OrWhere
-  }
+  export type UpdateInput = any
 
   export type DeleteInput = {
     pagina: number

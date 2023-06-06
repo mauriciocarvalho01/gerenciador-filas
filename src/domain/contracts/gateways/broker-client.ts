@@ -2,6 +2,7 @@ export interface BrokerClient {
   brokerFactoryConnection: (connectionOptions: BrokerClient.ConnectionOptions) => Promise<boolean>
   brokerFactoryProducer: (factoryProducerOptions: BrokerClient.FactoryProducerOptions) => Promise<boolean>
   brokerProducer: (producerOptions: BrokerClient.PublishOptions) => Promise<boolean>
+  closeChannel: () => Promise<void>
 }
 
 export namespace BrokerClient {

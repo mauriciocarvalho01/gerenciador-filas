@@ -4,7 +4,7 @@ export class Moment {
   private momentString!: moment.MomentInput | undefined
   constructor (momentString?: moment.MomentInput) {
     moment.locale('pt-br')
-    this.momentString = momentString
+    this.momentString = momentString 
   }
 
   now = (): Moment => {

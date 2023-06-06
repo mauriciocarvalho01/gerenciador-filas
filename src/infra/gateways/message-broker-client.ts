@@ -1,11 +1,10 @@
 import { BrokerClient } from '@/domain/contracts/gateways'
 import amqplib from 'amqplib'
-import logger from '@/logs/logger'
 
 export class MessageBrokerClient implements BrokerClient {
   private connection!: amqplib.Connection
   private channel!: amqplib.Channel
-  constructor (private readonly brokerClient: any) { }
+  constructor(private readonly brokerClient: any) { }
 
   public connect = async (connectionOptions: BrokerClient.ConnectionOptions): Promise<amqplib.Connection> => {
     this.connection = await this.brokerClient.connect(connectionOptions.url, connectionOptions.config)
@@ -13,11 +12,14 @@ export class MessageBrokerClient implements BrokerClient {
   }
 
   public createChannel = async (): Promise<amqplib.Channel> => {
-    this.channel = await this.connection.createChannel()
+    if(this.connection){
+      this.channel = await this.connection.createChannel()
+    }
     return this.channel
   }
 
   public createExchange = async (exchangeOptions: BrokerClient.ExchangeOptions): Promise<amqplib.Replies.AssertExchange> => {
+    if(!this.channel) this.channel = await this.createChannel()
     return await this.channel.assertExchange(exchangeOptions.exchangeName, exchangeOptions.type)
   }
 
@@ -29,13 +31,16 @@ export class MessageBrokerClient implements BrokerClient {
     return await this.channel.bindQueue(bindOptions.queueName, bindOptions.exchangeName, bindOptions.routingKey)
   }
 
+  public closeChannel = async (): Promise<void> => {
+    await this.channel.close()
+  }
+
   public brokerFactoryConnection = async (connectionOptions: BrokerClient.ConnectionOptions): Promise<any> => {
     try {
       await this.connect(connectionOptions)
       await this.createChannel()
     } catch (error: any) {
-      logger.log(error.message)
-      return false
+      throw new Error(error.message)
     }
   }
 
@@ -49,8 +54,7 @@ export class MessageBrokerClient implements BrokerClient {
       await this.createBind(bindOptions)
       return true
     } catch (error: any) {
-      logger.log(error.message)
-      return false
+      throw new Error(error.message)
     }
   }
 

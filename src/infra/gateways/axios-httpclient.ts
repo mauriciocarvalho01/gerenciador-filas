@@ -44,11 +44,11 @@ export class AxiosHttpClient implements HttpClient {
         return axiosResponse
       })
       .catch(async (error: AxiosError): Promise<any> => {
-        logger.log(`HTTP ERROR: ${error.message}`)
-        logger.log(`HTTP OPTIONS: ${JSON.stringify(httpOptions)}`)
+        logger.error(`HTTP ERROR: ${error.message}`)
+        logger.info(`HTTP OPTIONS: ${JSON.stringify(httpOptions)}`)
         if (retryIndex < this.maxAttpAttemps) {
           ++httpOptions.retryIndex
-          logger.log(`Refazendo a requisição...${retryIndex | 0}`)
+          logger.warn(`Refazendo a requisição...${retryIndex | 0}`)
           return await this.sendHook(httpOptions)
         }
         throw new Error('Não foi possível concluir a requisição')

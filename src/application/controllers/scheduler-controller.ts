@@ -9,7 +9,7 @@ export class SchedulerController {
     return await this.schedulerService.observeSchedulers().then(() => {
       logger.info('Gerenciador de agendamentos está finalizado!')
     }).catch((error: Error) => {
-      logger.log(error.message)
+      logger.error(error.message)
       throw new SchedulerError(new Error(error.message))
     })
   }

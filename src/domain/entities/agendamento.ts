@@ -5,8 +5,8 @@ export class SchedulerEntity {
   public _nextExecution!: string
   private readonly moment!: Moment
 
-  constructor (initialTime?: string) {
-    this.moment = new Moment(initialTime)
+  constructor(firstExecutionTime?: string, schedulerCreatedAt?: string) {
+    this.moment = new Moment(firstExecutionTime === '0000-00-00 00:00:00' ? schedulerCreatedAt : firstExecutionTime)
   }
 
   nextExecution = (alias: string): string => {

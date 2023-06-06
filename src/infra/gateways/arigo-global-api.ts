@@ -3,26 +3,39 @@ import { HttpClient } from '@/infra/gateways'
 import logger from '@/logs/logger'
 
 export class ArigoDataApi implements ArigoGlobalApi {
-  constructor (private readonly apiToken: ArigoGlobalApi.ApiToken, private readonly httpClient: HttpClient) { }
+  private appSecret: string = ''
+  private appKey: string = ''
   private rootUrl: string = 'https://environment.arigo.com.br'
   private systemUri: string = ''
   private gatewayUri: string = ''
   private actionUri: string = ''
   private endPoinUri: string = ''
   private httpMethod: string = ''
-  private apiBody: ArigoGlobalApi.ApiFilterBody = {
-    app_secret: this.apiToken.appSecret,
-    app_key: this.apiToken.appKey,
-    validate: false,
-    params: {
-      pagina: 0,
-      filtro: {
-        campos: {
-          e: undefined,
-          ou: undefined
+  private apiBody!: ArigoGlobalApi.ApiFilterBody
+  constructor(private readonly apiToken: ArigoGlobalApi.ApiToken, private readonly httpClient: HttpClient) {
+    this.appSecret = apiToken.appSecret
+    this.appKey = apiToken.appKey
+    this.apiBody = {
+      app_secret: this.appSecret,
+      app_key: this.appKey,
+      validate: false,
+      params: {
+        pagina: 0,
+        filtro: {
+          campos: {
+            e: undefined,
+            ou: undefined
+          }
         }
       }
     }
+  }
+
+  get getAppSecret(): string {
+    return this.appSecret
+  }
+  get getAppKey(): string {
+    return this.appKey
   }
 
   method = (method: string): ArigoDataApi => {
@@ -128,18 +141,25 @@ export class ArigoDataApi implements ArigoGlobalApi {
     return undefined
   }
 
+  update = async (params: ArigoGlobalApi.UpdateInput): Promise<ArigoGlobalApi.UpdateOutput> => {
+    const apiResponse: any = await this.send(this.convertParamsForBody(params))
+    if (apiResponse !== undefined) return apiResponse
+    return undefined
+  }
+
   replace = async (params: ArigoGlobalApi.ReplaceInput): Promise<ArigoGlobalApi.ReplaceOutput> => {
     const apiResponse: any = await this.send(this.convertParamsForBody(params))
     if (apiResponse !== undefined) return apiResponse
     return undefined
   }
 
-  send = async <T>(params: ArigoGlobalApi.ApiFilterBody): Promise<T> => {
+  send = async <T>(params: ArigoGlobalApi.ApiBody): Promise<T> => {
     const options: HttpClient.HttpOptions = {
       method: this.httpMethod,
       body: JSON.stringify(params)
     }
     logger.log(`Url fabricated ${this.apiUrlFactory()}`)
+    logger.log(`Body: ${JSON.stringify(params)}`)
     return await this.httpClient.sendHook({
       url: this.apiUrlFactory(),
       retryIndex: 0,

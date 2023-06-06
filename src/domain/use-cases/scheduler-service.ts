@@ -13,7 +13,10 @@ export class SchedulerService implements Scheduler {
     private readonly cron: Cron,
     private readonly arigoGlobalApi: ArigoGlobalApi,
     private readonly brokerClient: BrokerClient) {
-    void this.brokerClient.brokerFactoryConnection({ url: env.messageBroker.url ?? '' })
+    Promise.resolve(this.brokerClient.brokerFactoryConnection({
+      url: env.messageBroker.url ?? '',
+      config: { clientProperties: { connection_name: env.messageBroker.connectionName } }
+    }))
   }
 
   perform = async (): Promise<Scheduler.Output> => {
@@ -23,7 +26,7 @@ export class SchedulerService implements Scheduler {
   readonly observeSchedulers = async (): Scheduler.Output => {
     this.arigoGlobalApi.apiOptionsFactory({
       method: 'post',
-      connect: 'dev',
+      connect: env.arigoDataApi.environment,
       system: 'tools',
       gateway: 'api',
       action: 'read',
@@ -39,22 +42,68 @@ export class SchedulerService implements Scheduler {
   }
 
   readonly extractSchedulers = async (schedulers: ArigoGlobalApi.ReadOutput): Promise<void> => {
-    if (schedulers !== undefined) {
+    if (schedulers) {
       const { total_registros, registros: agendamentos } = schedulers
-      logger.info(`Agendamentos ativos e em espera: ${total_registros}`)
+      logger.info(`Agendamentos ativos em espera: ${total_registros}`)
+      const schedulersBatch = []
       for (const agendamento of agendamentos) {
-        const authorized = await this.checkAuthorization(agendamento)
-        const updatedState = await this.schedulerUpdateState(agendamento, 1)
-        if (authorized && updatedState) {
-          await this.cron.stop()
-          logger.log('Agendamento autorizado')
-          logger.log('Estado do agendamento alterado')
-          logger.info('Processando...')
-          await this.resolveBrokerProcess(agendamento)
-          await this.cron.restart()
+        const { agendamento_id_agendamento, agendamento_id_clientes, agendamento_sistema } = agendamento
+        logger.line(`-------------------------------------------------- AGENDAMENTO[${agendamento_id_agendamento}] -----------------------------------------------------`)
+        this.arigoGlobalApi.apiOptionsFactory({
+          method: 'post',
+          connect: env.arigoDataApi.environment,
+          system: 'tools',
+          gateway: 'api',
+          action: 'read',
+          endPoint: 'token',
+          token: {
+            appSecret: env.arigoDataApi.appSecret,
+            appKey: env.arigoDataApi.appKey
+          }
+        })
+        const clientTokens = await this.arigoGlobalApi.select({
+          page: 1,
+          andWhere: [
+            { chave: 'clientes_id_clientes', valor: agendamento_id_clientes },
+            { chave: 'sistema_link', valor: agendamento_sistema }
+          ]
+        })
+
+        if (clientTokens) {
+          const { total_registros, registros: tokens } = clientTokens
+          if (total_registros > 0) {
+            const authorized = await this.checkAuthorization(agendamento)
+            if (authorized) {
+              await this.cron.stop()
+              logger.log('Agendamento autorizado')
+              logger.log('Estado do agendamento alterado')
+              logger.info('Processando...')
+              schedulersBatch.push(this.execute({ ...agendamento, ...tokens[0] }))
+            }
+          }
+        } else {
+          logger.warn(`Não encontrado token do cliente para esse sistema: ${agendamento_sistema}`)
         }
       }
+      await Promise.all(schedulersBatch);
     }
+  }
+
+  private readonly execute = (scheduler: ArigoGlobalApi.ReadOutput): Promise<void> => {
+    return new Promise<void>(() => {
+      this.resolveBrokerProcess(scheduler).then(async () => {
+        const updatedState = await this.schedulerUpdateState(scheduler, 1)
+        if (updatedState) {
+          await this.cron.restart()
+        }
+      }).catch(async (error) => {
+        logger.error(error.message)
+        const updatedState = await this.schedulerUpdateState(scheduler, 0)
+        if (updatedState) {
+          await this.cron.restart()
+        }
+      })
+    })
   }
 
   private readonly checkAuthorization = async (scheduler: any): Promise<boolean> => {
@@ -70,9 +119,12 @@ export class SchedulerService implements Scheduler {
       agendamento_id_agendamento,
       agendamento_id_clientes
     } = scheduler
-    const agendamentoEntity = new SchedulerEntity(agendamento_inicio_processamento)
+    const agendamentoEntity = new SchedulerEntity(agendamento_inicio_processamento, agendamento_data_inicial)
     const isToDate = agendamentoEntity.checkIfUpToDate(agendamento_data_inicial, agendamento_data_final)
-    if (!isToDate) throw new OutdatedSchedulerError(new Error('Agendamento desatualizado'))
+    if (!isToDate) {
+      await this.schedulerUpdateState(scheduler, 0)
+      logger.warn(`Agendamento desatualizado: ${JSON.stringify(scheduler)}`)
+    }
     const moment = new Moment()
     logger.info(`Nome agendamento:${agendamento_nome}`)
     logger.info(`Agendamento Cliente[${agendamento_id_agendamento}][${agendamento_id_clientes}]`)
@@ -92,9 +144,15 @@ export class SchedulerService implements Scheduler {
   }
 
   readonly findProcessConfigOptions = async (scheduler: any, callback: Function): Promise<void> => {
-    const { agendamento_sistema, agendamento_id_processos_parametros } = scheduler
+    const { token_token_secret, token_token_key, agendamento_sistema, agendamento_id_processos_parametros } = scheduler
     logger.info(`SISTEMA[${agendamento_sistema}] PARAMETROS[${agendamento_id_processos_parametros}]`)
-    this.arigoGlobalApi.apiOptionsFactory({ system: agendamento_sistema, action: 'read', endPoint: 'processos-config' })
+    this.arigoGlobalApi.apiOptionsFactory({
+      token: { appSecret: token_token_secret, appKey: token_token_key },
+      method: 'post',
+      system: agendamento_sistema,
+      action: 'read',
+      endPoint: 'processos-config'
+    })
     const processos_config = await this.arigoGlobalApi.select({
       page: 1,
       andWhere: [
@@ -112,7 +170,7 @@ export class SchedulerService implements Scheduler {
       for (const processo_config of processos_config) {
         const { processos_config_id_processos_config, processos_config_id_processos } = processo_config
         logger.info(`PROCESSOS CONFIG[${processos_config_id_processos_config}] PROCESSO[${processos_config_id_processos}]`)
-        this.arigoGlobalApi.apiOptionsFactory({ system: 'avalon', action: 'read', endPoint: 'processos' })
+        this.arigoGlobalApi.apiOptionsFactory({ method: 'post', system: 'avalon', action: 'read', endPoint: 'processos' })
         const processo = await this.arigoGlobalApi.select({
           page: 1,
           andWhere: [
@@ -134,7 +192,7 @@ export class SchedulerService implements Scheduler {
       logger.log(`Processos encontrados: ${total_registros}`)
       const { processos_id_processos, processos_tipo, processos_tipo_nome, processos_processo, processos_fila } = registros[0]
       const processo = registros[0]
-      const { agendamento_id_agendamento, agendamento_sistema } = agendamento
+      const { token_token_secret, token_token_key, agendamento_id_agendamento, agendamento_sistema } = agendamento
       logger.info(`ID PROCESSO[${processos_id_processos}] TIPO[${processos_tipo}]`)
       logger.info(`PROCESSO[${processos_processo}] FILA ATIVA[${processos_fila}]`)
       if (processos_fila !== undefined || processos_fila !== 0 || processos_fila !== '0') {
@@ -157,7 +215,13 @@ export class SchedulerService implements Scheduler {
           if (brokerIsOk) {
             const now = new Moment().now().format('YYYY:MM:DD HH:mm:ss')
             const { grupo_terceiros_id_terceiros } = processoConfig.processo_config
-            this.arigoGlobalApi.apiOptionsFactory({ system: agendamento_sistema, endPoint: 'terceiros' })
+            this.arigoGlobalApi.apiOptionsFactory({
+              token: { appSecret: token_token_secret, appKey: token_token_key },
+              method: 'post',
+              system: agendamento_sistema,
+              action: 'read',
+              endPoint: 'terceiros'
+            })
             const terceiros: ArigoGlobalApi.ReadOutput = await this.arigoGlobalApi.select({
               page: 1,
               andWhere: [
@@ -184,7 +248,10 @@ export class SchedulerService implements Scheduler {
                   routingKey,
                   content: Buffer.from(JSON.stringify(message))
                 })
-                if (!updateStateIsOk || !brokerProducerIsOk) await this.schedulerUpdateState(agendamento, 0)
+                if (!updateStateIsOk || !brokerProducerIsOk) {
+                  await this.schedulerUpdateState(agendamento, 0)
+                  this.brokerClient.closeChannel()
+                }
               } else {
                 logger.warn('Essa mensagem já está inserida na fila de processamento')
               }
@@ -196,11 +263,12 @@ export class SchedulerService implements Scheduler {
   }
 
   private readonly inQueue = async (checksum: string): Promise<Boolean> => {
-    this.arigoGlobalApi.apiOptionsFactory({ system: 'tools', action: 'read', endPoint: 'agendamento-execucao' })
+    this.arigoGlobalApi.apiOptionsFactory({ method: 'post', system: 'tools', action: 'read', endPoint: 'agendamento-execucao' })
     const schedulerExecution: ArigoGlobalApi.ReadOutput = await this.arigoGlobalApi.select({
       page: 1,
       andWhere: [
-        { chave: 'agendamento-execucao_checksum', valor: checksum }
+        { chave: 'agendamento-execucao_checksum', valor: checksum },
+        { chave: 'agendamento-execucao_fila', valor: '1' }
       ]
     })
     if (!schedulerExecution) return true
@@ -209,17 +277,17 @@ export class SchedulerService implements Scheduler {
   }
 
   private readonly schedulerUpdateState = async (scheduler: any, status: number): Promise<any> => {
+    const { agendamento_id_agendamento, agendamento_inicio_processamento } = scheduler
     this.arigoGlobalApi.apiOptionsFactory({
-      method: 'post',
+      method: 'put',
       connect: 'dev',
       system: 'tools',
       gateway: 'api',
-      action: 'replace',
-      endPoint: 'agendamento'
+      action: 'update',
+      endPoint: `agendamento/${agendamento_id_agendamento}`
     })
-    const { agendamento_id_agendamento } = scheduler
     const now = new Moment().now().format('YYYY-MM-DDTHH:mm:ss')
-    return await this.arigoGlobalApi.replace({ id_agendamento: agendamento_id_agendamento, processando: status, inicio_processamento: now })
+    return await this.arigoGlobalApi.update({ processando: status, inicio_processamento: status !== 0 ? now : agendamento_inicio_processamento })
   }
 
   private readonly schedulerExecutionUpdateState = async (message: Message): Promise<any> => {
