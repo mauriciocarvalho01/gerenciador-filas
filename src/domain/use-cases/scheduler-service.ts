@@ -160,6 +160,7 @@ export class SchedulerService implements Scheduler {
       ]
     })
     if (!processos_config) await this.schedulerUpdateState(scheduler, 0)
+    if (processos_config?.total_registros === 0) await this.schedulerUpdateState(scheduler, 0)
     await this.findProcessOptions(processos_config, async (processoConfig: any) => await callback(processoConfig))
   }
 

@@ -7,12 +7,14 @@ export class MessageBrokerClient implements BrokerClient {
   constructor(private readonly brokerClient: any) { }
 
   public connect = async (connectionOptions: BrokerClient.ConnectionOptions): Promise<amqplib.Connection> => {
-    this.connection = await this.brokerClient.connect(connectionOptions.url, connectionOptions.config)
+    if(!this.connection){
+      this.connection = await this.brokerClient.connect(connectionOptions.url, connectionOptions.config)
+    }
     return this.connection
   }
 
   public createChannel = async (): Promise<amqplib.Channel> => {
-    if(this.connection){
+    if(this.connection && !this.channel){
       this.channel = await this.connection.createChannel()
     }
     return this.channel
@@ -38,7 +40,6 @@ export class MessageBrokerClient implements BrokerClient {
   public brokerFactoryConnection = async (connectionOptions: BrokerClient.ConnectionOptions): Promise<any> => {
     try {
       await this.connect(connectionOptions)
-      await this.createChannel()
     } catch (error: any) {
       throw new Error(error.message)
     }
@@ -46,6 +47,7 @@ export class MessageBrokerClient implements BrokerClient {
 
   public brokerFactoryProducer = async (factoryProducerOptions: BrokerClient.FactoryProducerOptions): Promise<boolean> => {
     try {
+      await this.createChannel()
       const exchangeOptions: BrokerClient.ExchangeOptions = factoryProducerOptions.exchangeOptions
       await this.createExchange(exchangeOptions)
       const queueOptions: BrokerClient.QueueOptions = factoryProducerOptions.queueOptions
