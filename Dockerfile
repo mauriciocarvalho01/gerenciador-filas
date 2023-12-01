@@ -1,4 +1,4 @@
-FROM node:alpine as ts-compiler
+FROM node:21.2-alpine3.18 as ts-compiler
 WORKDIR /usr/app
 COPY package*.json ./
 COPY ecosystem.config*.cjs ./
@@ -7,14 +7,14 @@ RUN npm install
 COPY . ./
 RUN npm run build
 
-FROM node:alpine as ts-remover
+FROM node:21.2-alpine3.18 as ts-remover
 WORKDIR /usr/app
 COPY --from=ts-compiler /usr/app/package*.json ./
 COPY --from=ts-compiler /usr/app/ecosystem.config*.cjs ./
 COPY --from=ts-compiler /usr/app/dist ./dist
 
 
-FROM node:alpine
+FROM node:21.2-alpine3.18
 WORKDIR /usr/app
 
 RUN apk add --no-cache openssl
