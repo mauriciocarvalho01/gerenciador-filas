@@ -46,9 +46,9 @@
   "dependencies": {
     "@types/amqplib": "^0.10.1",
     "amqplib": "^0.10.3",
-    "axios": "^0.27.2",
+    "axios": "^1.13.5",
     "cors": "^2.8.5",
-    "express": "^4.17.1",
+    "express": "^4.22.0",
     "jsonwebtoken": "^8.5.1",
     "md5": "^2.3.0",
     "module-alias": "^2.2.2",
